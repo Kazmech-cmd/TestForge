@@ -1,8 +1,11 @@
 import re
 import subprocess
 import sys
-from PyQt6.QtCore import QThread, pyqtSignal
-from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel
+from PyQt6.QtCore import QThread, pyqtSignal, Qt
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QPushButton, QLabel,
+    QVBoxLayout, QWidget
+)
 
 
 class TestRunnerThread(QThread):
@@ -29,18 +32,77 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("TestForge")
-        self.setGeometry(100, 100, 400, 300)
+        self.setFixedSize(360, 320)
 
-        run_button = QPushButton("Запустить тесты", self)
-        run_button.setGeometry(125, 80, 150, 40)
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(40, 40, 40, 40)
+        layout.setSpacing(16)
+        central_widget.setLayout(layout)
+
+        title = QLabel("TestForge")
+        title.setObjectName("title")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+
+        run_button = QPushButton("Запустить тесты")
+        run_button.setObjectName("runButton")
         run_button.clicked.connect(self.run_tests)
+        layout.addWidget(run_button)
 
-        report_button = QPushButton("Открыть отчёт", self)
-        report_button.setGeometry(125, 140, 150, 40)
+        report_button = QPushButton("Открыть отчёт")
+        report_button.setObjectName("reportButton")
         report_button.clicked.connect(self.open_report)
+        layout.addWidget(report_button)
 
-        self.status_label = QLabel("Готов к запуску", self)
-        self.status_label.setGeometry(50, 200, 300, 30)
+        self.status_label = QLabel("Готов к запуску")
+        self.status_label.setObjectName("status")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.status_label)
+
+        self.apply_styles()
+
+    def apply_styles(self):
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #1e1e2e;
+            }
+            #title {
+                color: #cdd6f4;
+                font-size: 22px;
+                font-weight: bold;
+                margin-bottom: 10px;
+            }
+            QPushButton {
+                background-color: #313244;
+                color: #cdd6f4;
+                border: none;
+                border-radius: 8px;
+                padding: 12px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #45475a;
+            }
+            QPushButton:pressed {
+                background-color: #585b70;
+            }
+            #runButton {
+                background-color: #89b4fa;
+                color: #1e1e2e;
+                font-weight: bold;
+            }
+            #runButton:hover {
+                background-color: #74a8f9;
+            }
+            #status {
+                color: #a6adc8;
+                font-size: 13px;
+                margin-top: 10px;
+            }
+        """)
 
     def run_tests(self):
         self.status_label.setText("Тесты выполняются...")
