@@ -5,7 +5,15 @@ import requests
 
 @allure.step("Отправить GET-запрос на {url}")
 def get_response(url):
-    return requests.get(url)
+    try:
+        return requests.get(url, timeout=5)
+    except requests.exceptions.RequestException as error:
+        allure.attach(
+            str(error),
+            name="connection_error",
+            attachment_type=allure.attachment_type.TEXT,
+        )
+        raise AssertionError(f"Не удалось подключиться к {url}: {error}")
 
 
 @allure.title("API-эндпоинт возвращает успешный статус")
