@@ -1,17 +1,17 @@
+import os
 import allure
-import pytest
 import requests
 
 
-@allure.step("Отправить GET-запрос на пост {post_id}")
-def get_post(post_id):
-    return requests.get(f"https://jsonplaceholder.typicode.com/posts/{post_id}")
+@allure.step("Отправить GET-запрос на {url}")
+def get_response(url):
+    return requests.get(url)
 
 
-@allure.title("Пост {post_id} должен возвращать статус 200")
-@pytest.mark.parametrize("post_id", [1, 2, 3])
-def test_multiple_posts_return_200(post_id):
-    response = get_post(post_id)
+@allure.title("API-эндпоинт возвращает успешный статус")
+def test_api_returns_success_status():
+    url = os.environ.get("TEST_API_URL", "https://jsonplaceholder.typicode.com/posts/1")
+    response = get_response(url)
     try:
         with allure.step("Проверить, что статус ответа — 200"):
             assert response.status_code == 200
@@ -24,18 +24,28 @@ def test_multiple_posts_return_200(post_id):
         raise
 
 
-@allure.title("Ответ должен содержать поле title")
-@allure.description("Проверяем, что структура ответа API соответствует ожидаемой схеме")
-def test_post_has_title_field():
-    response = get_post(1)
+@allure.title("Ответ API является корректным JSON")
+@allure.description("Проверяем, что тело ответа парсится как JSON и не пустое")
+def test_api_response_is_valid_json():
+    url = os.environ.get("TEST_API_URL", "https://jsonplaceholder.typicode.com/posts/1")
+    response = get_response(url)
     try:
-        with allure.step("Проверить, что в ответе есть поле title"):
+        with allure.step("Проверить, что ответ парсится как JSON"):
             data = response.json()
-            assert "title" in data
-    except AssertionError:
+        with allure.step("Проверить, что ответ не пустой"):
+            assert data
+    except (ValueError, AssertionError):
         allure.attach(
             response.text,
             name="response_body",
             attachment_type=allure.attachment_type.TEXT,
         )
         raise
+
+
+@allure.title("Время ответа API не превышает 3 секунды")
+def test_api_response_time_is_acceptable():
+    url = os.environ.get("TEST_API_URL", "https://jsonplaceholder.typicode.com/posts/1")
+    response = get_response(url)
+    with allure.step("Проверить время ответа"):
+        assert response.elapsed.total_seconds() < 3

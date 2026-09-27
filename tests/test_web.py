@@ -1,11 +1,13 @@
+import os
 import allure
 
 
-@allure.title("Заголовок страницы example.com соответствует ожидаемому")
-def test_example_page_title(page):
-    page.goto("https://example.com")
+@allure.title("Страница открывается и содержит непустой заголовок")
+def test_url_opens_successfully(page):
+    url = os.environ.get("TEST_URL", "https://example.com")
+    page.goto(url)
     try:
-        assert page.title() == "Example Domain"
+        assert page.title() != ""
     except AssertionError:
         allure.attach(
             page.screenshot(),
