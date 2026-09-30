@@ -10,11 +10,6 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QLabel,
     QVBoxLayout, QWidget, QLineEdit, QRadioButton, QButtonGroup,
-    QComboBox, QTextEdit
-)
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QPushButton, QLabel,
-    QVBoxLayout, QWidget, QLineEdit, QRadioButton, QButtonGroup,
     QComboBox, QTextEdit, QMessageBox
 )
 
@@ -44,7 +39,8 @@ clean_old_logs()
 class TestRunnerThread(QThread):
     finished_signal = pyqtSignal(str)
 
-    def __init__(self, target, value=None, method="GET", body="", headers="", required_fields=""):
+    def __init__(self, target, value=None, method="GET", body="", headers="",
+                 required_fields="", expected_text="", selector=""):
         super().__init__()
         self.target = target
         self.value = value
@@ -52,12 +48,16 @@ class TestRunnerThread(QThread):
         self.body = body
         self.headers = headers
         self.required_fields = required_fields
+        self.expected_text = expected_text
+        self.selector = selector
 
     def run(self):
         env = os.environ.copy()
 
         if self.target == "web":
             env["TEST_URL"] = self.value
+            env["TEST_EXPECTED_TEXT"] = self.expected_text
+            env["TEST_SELECTOR"] = self.selector
             test_path = "tests/test_web.py"
         elif self.target == "api":
             env["TEST_API_URL"] = self.value
@@ -90,7 +90,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("TestForge")
-        self.setFixedSize(380, 700)
+        self.setFixedSize(380, 800)
         self.setWindowIcon(QIcon("assets/testforge_logo.png"))
 
         central_widget = QWidget()
@@ -135,39 +135,53 @@ class MainWindow(QMainWindow):
         self.target_input.setObjectName("urlInput")
         layout.addWidget(self.target_input)
 
+        # --- Поля для веб-тестов ---
+        self.web_text_label = QLabel("Ожидаемый текст на странице (необязательно):")
+        self.web_text_label.setObjectName("fieldLabel")
+        layout.addWidget(self.web_text_label)
+
+        self.web_text_input = QLineEdit()
+        self.web_text_input.setObjectName("urlInput")
+        self.web_text_input.setPlaceholderText("например, Добро пожаловать")
+        layout.addWidget(self.web_text_input)
+
+        self.web_selector_label = QLabel("CSS-селектор элемента (необязательно):")
+        self.web_selector_label.setObjectName("fieldLabel")
+        layout.addWidget(self.web_selector_label)
+
+        self.web_selector_input = QLineEdit()
+        self.web_selector_input.setObjectName("urlInput")
+        self.web_selector_input.setPlaceholderText("например, button.submit")
+        layout.addWidget(self.web_selector_input)
+
+        # --- Поля для API-тестов ---
         self.headers_label = QLabel("Заголовки (JSON, необязательно):")
         self.headers_label.setObjectName("fieldLabel")
-        self.headers_label.setVisible(False)
         layout.addWidget(self.headers_label)
 
         self.headers_input = QTextEdit()
         self.headers_input.setObjectName("bodyInput")
         self.headers_input.setPlaceholderText('{"Authorization": "Bearer токен"}')
         self.headers_input.setFixedHeight(55)
-        self.headers_input.setVisible(False)
         layout.addWidget(self.headers_input)
 
         self.body_label = QLabel("Тело запроса (JSON):")
         self.body_label.setObjectName("fieldLabel")
-        self.body_label.setVisible(False)
         layout.addWidget(self.body_label)
 
         self.body_input = QTextEdit()
         self.body_input.setObjectName("bodyInput")
         self.body_input.setPlaceholderText('{"key": "value"}')
         self.body_input.setFixedHeight(55)
-        self.body_input.setVisible(False)
         layout.addWidget(self.body_input)
 
         self.fields_label = QLabel("Обязательные поля в ответе (через запятую):")
         self.fields_label.setObjectName("fieldLabel")
-        self.fields_label.setVisible(False)
         layout.addWidget(self.fields_label)
 
         self.fields_input = QLineEdit()
         self.fields_input.setObjectName("urlInput")
         self.fields_input.setPlaceholderText("id, title, userId")
-        self.fields_input.setVisible(False)
         layout.addWidget(self.fields_input)
 
         self.update_input_field()
@@ -197,13 +211,20 @@ class MainWindow(QMainWindow):
     def update_input_field(self):
         self.target_input.clear()
         is_api = self.api_radio.isChecked()
+        is_web = self.web_radio.isChecked()
+
         self.method_combo.setVisible(is_api)
         self.headers_label.setVisible(is_api)
         self.headers_input.setVisible(is_api)
         self.fields_label.setVisible(is_api)
         self.fields_input.setVisible(is_api)
 
-        if self.web_radio.isChecked():
+        self.web_text_label.setVisible(is_web)
+        self.web_text_input.setVisible(is_web)
+        self.web_selector_label.setVisible(is_web)
+        self.web_selector_input.setVisible(is_web)
+
+        if is_web:
             self.target_input.setPlaceholderText("https://example.com")
         elif is_api:
             self.target_input.setPlaceholderText("https://jsonplaceholder.typicode.com/posts/1")
@@ -321,9 +342,14 @@ class MainWindow(QMainWindow):
             return
 
         if self.web_radio.isChecked():
+            expected_text = self.web_text_input.text().strip()
+            selector = self.web_selector_input.text().strip()
             self.status_label.setText(f"Проверяем {value}...")
             logging.info(f"Запуск веб-теста для {value}")
-            self.thread = TestRunnerThread(target="web", value=value)
+            self.thread = TestRunnerThread(
+                target="web", value=value,
+                expected_text=expected_text, selector=selector
+            )
         elif self.api_radio.isChecked():
             method = self.method_combo.currentText()
             body = self.body_input.toPlainText().strip()
