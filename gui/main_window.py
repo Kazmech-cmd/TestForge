@@ -2,16 +2,16 @@ import os
 import re
 import subprocess
 import sys
+import logging
+import time
+from datetime import datetime
 from PyQt6.QtCore import QThread, pyqtSignal, Qt
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QLabel,
-    QVBoxLayout, QWidget, QLineEdit, QRadioButton, QButtonGroup
+    QVBoxLayout, QWidget, QLineEdit, QRadioButton, QButtonGroup,
+    QComboBox, QTextEdit
 )
-import logging
-from datetime import datetime
-import time
-
 
 
 os.makedirs("logs", exist_ok=True)
@@ -35,13 +35,16 @@ def clean_old_logs():
 
 clean_old_logs()
 
+
 class TestRunnerThread(QThread):
     finished_signal = pyqtSignal(str)
 
-    def __init__(self, target, value=None):
+    def __init__(self, target, value=None, method="GET", body=""):
         super().__init__()
         self.target = target
         self.value = value
+        self.method = method
+        self.body = body
 
     def run(self):
         env = os.environ.copy()
@@ -51,6 +54,8 @@ class TestRunnerThread(QThread):
             test_path = "tests/test_web.py"
         elif self.target == "api":
             env["TEST_API_URL"] = self.value
+            env["TEST_API_METHOD"] = self.method
+            env["TEST_API_BODY"] = self.body
             test_path = "tests/test_api.py"
         else:
             test_path = "tests/"
@@ -76,14 +81,14 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("TestForge")
-        self.setFixedSize(360, 500)
+        self.setFixedSize(360, 560)
         self.setWindowIcon(QIcon("assets/testforge_logo.png"))
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(40, 40, 40, 40)
+        layout.setContentsMargins(40, 30, 40, 30)
         layout.setSpacing(10)
         central_widget.setLayout(layout)
 
@@ -110,9 +115,24 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.api_radio)
         layout.addWidget(self.desktop_radio)
 
+        self.method_combo = QComboBox()
+        self.method_combo.setObjectName("methodCombo")
+        self.method_combo.addItems(["GET", "POST", "PUT", "DELETE"])
+        self.method_combo.setVisible(False)
+        self.method_combo.currentTextChanged.connect(self.update_body_visibility)
+        layout.addWidget(self.method_combo)
+
         self.target_input = QLineEdit()
         self.target_input.setObjectName("urlInput")
         layout.addWidget(self.target_input)
+
+        self.body_input = QTextEdit()
+        self.body_input.setObjectName("bodyInput")
+        self.body_input.setPlaceholderText('{"key": "value"}')
+        self.body_input.setFixedHeight(70)
+        self.body_input.setVisible(False)
+        layout.addWidget(self.body_input)
+
         self.update_input_field()
 
         run_button = QPushButton("Запустить")
@@ -120,11 +140,12 @@ class MainWindow(QMainWindow):
         run_button.clicked.connect(self.run_tests)
         layout.addWidget(run_button)
 
-        report_button = QPushButton("Открыть отчёт")
         clear_logs_button = QPushButton("Очистить логи")
         clear_logs_button.setObjectName("reportButton")
         clear_logs_button.clicked.connect(self.clear_logs)
         layout.addWidget(clear_logs_button)
+
+        report_button = QPushButton("Открыть отчёт")
         report_button.setObjectName("reportButton")
         report_button.clicked.connect(self.open_report)
         layout.addWidget(report_button)
@@ -138,10 +159,18 @@ class MainWindow(QMainWindow):
 
     def update_input_field(self):
         self.target_input.clear()
+        is_api = self.api_radio.isChecked()
+        self.method_combo.setVisible(is_api)
+
         if self.web_radio.isChecked():
             self.target_input.setPlaceholderText("https://example.com")
-        elif self.api_radio.isChecked():
+        elif is_api:
             self.target_input.setPlaceholderText("https://jsonplaceholder.typicode.com/posts/1")
+
+        self.update_body_visibility(self.method_combo.currentText())
+
+    def update_body_visibility(self, method):
+        self.body_input.setVisible(self.api_radio.isChecked() and method in ("POST", "PUT"))
 
     def clear_logs(self):
         for handler in logging.root.handlers[:]:
@@ -191,6 +220,23 @@ class MainWindow(QMainWindow):
             #urlInput:focus {
                 border: 1px solid #89b4fa;
             }
+            #methodCombo {
+                background-color: #313244;
+                color: #cdd6f4;
+                border: 1px solid #45475a;
+                border-radius: 8px;
+                padding: 8px;
+                font-size: 13px;
+            }
+            #bodyInput {
+                background-color: #313244;
+                color: #cdd6f4;
+                border: 1px solid #45475a;
+                border-radius: 8px;
+                padding: 8px;
+                font-size: 12px;
+                margin-bottom: 4px;
+            }
             QPushButton {
                 background-color: #313244;
                 color: #cdd6f4;
@@ -230,9 +276,11 @@ class MainWindow(QMainWindow):
             self.thread = TestRunnerThread(target="web", value=value)
         elif self.api_radio.isChecked():
             value = value or "https://jsonplaceholder.typicode.com/posts/1"
-            self.status_label.setText(f"Проверяем {value}...")
-            logging.info(f"Запуск API-теста для {value}")
-            self.thread = TestRunnerThread(target="api", value=value)
+            method = self.method_combo.currentText()
+            body = self.body_input.toPlainText().strip()
+            self.status_label.setText(f"Проверяем {method} {value}...")
+            logging.info(f"Запуск API-теста: {method} {value}")
+            self.thread = TestRunnerThread(target="api", value=value, method=method, body=body)
         else:
             return
 
