@@ -167,3 +167,48 @@ def test_custom_scenario(page):
                 attachment_type=allure.attachment_type.PNG,
             )
             raise
+
+import requests
+
+
+@allure.title("На странице нет битых ссылок")
+@allure.description("Проверяет все ссылки на странице на коды ответа 200-399")
+def test_no_broken_links(page):
+    url = os.environ.get("TEST_URL", "https://example.com")
+    page.goto(url)
+    page.wait_for_load_state("networkidle")
+
+    links = page.locator("a[href]").evaluate_all(
+        "elements => elements.map(e => e.href)"
+    )
+    unique_links = list(set(links))[:20]
+
+    if not unique_links:
+        allure.attach(
+            "На странице не найдено ссылок — проверка пропущена",
+            name="skip_reason",
+            attachment_type=allure.attachment_type.TEXT,
+        )
+        return
+
+    broken_links = []
+    for link in unique_links:
+        if not link.startswith("http"):
+            continue
+        try:
+            with allure.step(f"Проверить ссылку: {link}"):
+                response = requests.head(link, timeout=5, allow_redirects=True)
+                if response.status_code >= 400:
+                    broken_links.append(f"{link} -> {response.status_code}")
+        except requests.exceptions.RequestException as error:
+            broken_links.append(f"{link} -> ошибка подключения ({error})")
+
+    if broken_links:
+        allure.attach(
+            "\n".join(broken_links),
+            name="broken_links",
+            attachment_type=allure.attachment_type.TEXT,
+        )
+
+    with allure.step("Проверить, что битых ссылок нет"):
+        assert not broken_links, f"Найдено битых ссылок: {len(broken_links)}"
