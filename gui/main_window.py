@@ -40,7 +40,7 @@ class TestRunnerThread(QThread):
     finished_signal = pyqtSignal(str)
 
     def __init__(self, target, value=None, method="GET", body="", headers="",
-                 required_fields="", expected_text="", selector=""):
+                 required_fields="", expected_text="", selector="", scenario=""):
         super().__init__()
         self.target = target
         self.value = value
@@ -50,6 +50,7 @@ class TestRunnerThread(QThread):
         self.required_fields = required_fields
         self.expected_text = expected_text
         self.selector = selector
+        self.scenario = scenario
 
     def run(self):
         env = os.environ.copy()
@@ -58,6 +59,7 @@ class TestRunnerThread(QThread):
             env["TEST_URL"] = self.value
             env["TEST_EXPECTED_TEXT"] = self.expected_text
             env["TEST_SELECTOR"] = self.selector
+            env["TEST_SCENARIO"] = self.scenario
             test_path = "tests/test_web.py"
         elif self.target == "api":
             env["TEST_API_URL"] = self.value
@@ -90,7 +92,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("TestForge")
-        self.setFixedSize(380, 800)
+        self.setFixedSize(380, 870)
         self.setWindowIcon(QIcon("assets/testforge_logo.png"))
 
         central_widget = QWidget()
@@ -153,6 +155,16 @@ class MainWindow(QMainWindow):
         self.web_selector_input.setObjectName("urlInput")
         self.web_selector_input.setPlaceholderText("например, button.submit")
         layout.addWidget(self.web_selector_input)
+
+        self.web_scenario_label = QLabel("Сценарий действий (необязательно):")
+        self.web_scenario_label.setObjectName("fieldLabel")
+        layout.addWidget(self.web_scenario_label)
+
+        self.web_scenario_input = QTextEdit()
+        self.web_scenario_input.setObjectName("bodyInput")
+        self.web_scenario_input.setPlaceholderText('fill: input[name="email"] | test@mail.com\nclick: button[type="submit"]')
+        self.web_scenario_input.setFixedHeight(70)
+        layout.addWidget(self.web_scenario_input)
 
         # --- Поля для API-тестов ---
         self.headers_label = QLabel("Заголовки (JSON, необязательно):")
@@ -223,6 +235,8 @@ class MainWindow(QMainWindow):
         self.web_text_input.setVisible(is_web)
         self.web_selector_label.setVisible(is_web)
         self.web_selector_input.setVisible(is_web)
+        self.web_scenario_label.setVisible(is_web)
+        self.web_scenario_input.setVisible(is_web)
 
         if is_web:
             self.target_input.setPlaceholderText("https://example.com")
@@ -344,11 +358,13 @@ class MainWindow(QMainWindow):
         if self.web_radio.isChecked():
             expected_text = self.web_text_input.text().strip()
             selector = self.web_selector_input.text().strip()
+            scenario = self.web_scenario_input.toPlainText().strip()
             self.status_label.setText(f"Проверяем {value}...")
             logging.info(f"Запуск веб-теста для {value}")
             self.thread = TestRunnerThread(
                 target="web", value=value,
-                expected_text=expected_text, selector=selector
+                expected_text=expected_text, selector=selector,
+                scenario=scenario
             )
         elif self.api_radio.isChecked():
             method = self.method_combo.currentText()
