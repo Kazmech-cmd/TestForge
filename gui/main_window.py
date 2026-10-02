@@ -40,7 +40,8 @@ class TestRunnerThread(QThread):
     finished_signal = pyqtSignal(str)
 
     def __init__(self, target, value=None, method="GET", body="", headers="",
-                 required_fields="", expected_text="", selector="", scenario=""):
+                 required_fields="", expected_text="", selector="", scenario="",
+                 app_path=""):
         super().__init__()
         self.target = target
         self.value = value
@@ -51,6 +52,7 @@ class TestRunnerThread(QThread):
         self.expected_text = expected_text
         self.selector = selector
         self.scenario = scenario
+        self.app_path = app_path
 
     def run(self):
         env = os.environ.copy()
@@ -68,12 +70,20 @@ class TestRunnerThread(QThread):
             env["TEST_API_HEADERS"] = self.headers
             env["TEST_API_REQUIRED_FIELDS"] = self.required_fields
             test_path = "tests/test_api.py"
+        elif self.target == "desktop":
+            env["TEST_APP_PATH"] = self.app_path
+            test_path = "tests/test_desktop.py"
         else:
             test_path = "tests/"
 
+        pytest_args = ["python", "-m", "pytest", test_path, "-v",
+                        "--alluredir=allure-results", "--clean-alluredir",
+                        "--timeout=30"]
+        if self.target != "desktop":
+            pytest_args.append("--headed")
+
         result = subprocess.run(
-            ["python", "-m", "pytest", test_path, "-v", "--headed",
-             "--alluredir=allure-results", "--clean-alluredir"],
+            pytest_args,
             capture_output=True,
             text=True,
             env=env,
@@ -111,8 +121,7 @@ class MainWindow(QMainWindow):
         self.web_radio = QRadioButton("Веб-сайт")
         self.web_radio.setChecked(True)
         self.api_radio = QRadioButton("API")
-        self.desktop_radio = QRadioButton("Десктоп-приложение (скоро)")
-        self.desktop_radio.setEnabled(False)
+        self.desktop_radio = QRadioButton("Десктоп-приложение")
 
         self.mode_group = QButtonGroup()
         self.mode_group.addButton(self.web_radio)
@@ -121,6 +130,7 @@ class MainWindow(QMainWindow):
 
         self.web_radio.toggled.connect(self.update_input_field)
         self.api_radio.toggled.connect(self.update_input_field)
+        self.desktop_radio.toggled.connect(self.update_input_field)
 
         layout.addWidget(self.web_radio)
         layout.addWidget(self.api_radio)
@@ -165,6 +175,16 @@ class MainWindow(QMainWindow):
         self.web_scenario_input.setPlaceholderText('fill: input[name="email"] | test@mail.com\nclick: button[type="submit"]')
         self.web_scenario_input.setFixedHeight(70)
         layout.addWidget(self.web_scenario_input)
+
+        # --- Поле для desktop-тестов ---
+        self.desktop_path_label = QLabel("Путь к .exe (или имя, если в PATH):")
+        self.desktop_path_label.setObjectName("fieldLabel")
+        layout.addWidget(self.desktop_path_label)
+
+        self.desktop_path_input = QLineEdit()
+        self.desktop_path_input.setObjectName("urlInput")
+        self.desktop_path_input.setPlaceholderText("notepad.exe")
+        layout.addWidget(self.desktop_path_input)
 
         # --- Поля для API-тестов ---
         self.headers_label = QLabel("Заголовки (JSON, необязательно):")
@@ -224,6 +244,7 @@ class MainWindow(QMainWindow):
         self.target_input.clear()
         is_api = self.api_radio.isChecked()
         is_web = self.web_radio.isChecked()
+        is_desktop = self.desktop_radio.isChecked()
 
         self.method_combo.setVisible(is_api)
         self.headers_label.setVisible(is_api)
@@ -237,6 +258,10 @@ class MainWindow(QMainWindow):
         self.web_selector_input.setVisible(is_web)
         self.web_scenario_label.setVisible(is_web)
         self.web_scenario_input.setVisible(is_web)
+
+        self.target_input.setVisible(not is_desktop)
+        self.desktop_path_label.setVisible(is_desktop)
+        self.desktop_path_input.setVisible(is_desktop)
 
         if is_web:
             self.target_input.setPlaceholderText("https://example.com")
@@ -349,6 +374,18 @@ class MainWindow(QMainWindow):
         """)
 
     def run_tests(self):
+        if self.desktop_radio.isChecked():
+            app_path = self.desktop_path_input.text().strip()
+            if not app_path:
+                QMessageBox.warning(self, "Не заполнено поле", "Укажите путь к приложению.")
+                return
+            self.status_label.setText(f"Проверяем {app_path}...")
+            logging.info(f"Запуск desktop-теста для {app_path}")
+            self.thread = TestRunnerThread(target="desktop", app_path=app_path)
+            self.thread.finished_signal.connect(self.on_tests_finished)
+            self.thread.start()
+            return
+
         value = self.target_input.text().strip()
 
         if not value:
