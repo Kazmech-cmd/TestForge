@@ -41,7 +41,7 @@ class TestRunnerThread(QThread):
 
     def __init__(self, target, value=None, method="GET", body="", headers="",
                  required_fields="", expected_text="", selector="", scenario="",
-                 app_path=""):
+                 app_path="", desktop_text="", desktop_element="", desktop_scenario=""):
         super().__init__()
         self.target = target
         self.value = value
@@ -53,6 +53,9 @@ class TestRunnerThread(QThread):
         self.selector = selector
         self.scenario = scenario
         self.app_path = app_path
+        self.desktop_text = desktop_text
+        self.desktop_element = desktop_element
+        self.desktop_scenario = desktop_scenario
 
     def run(self):
         env = os.environ.copy()
@@ -72,6 +75,9 @@ class TestRunnerThread(QThread):
             test_path = "tests/test_api.py"
         elif self.target == "desktop":
             env["TEST_APP_PATH"] = self.app_path
+            env["TEST_DESKTOP_TEXT"] = self.desktop_text
+            env["TEST_DESKTOP_ELEMENT"] = self.desktop_element
+            env["TEST_DESKTOP_SCENARIO"] = self.desktop_scenario
             test_path = "tests/test_desktop.py"
         else:
             test_path = "tests/"
@@ -102,7 +108,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("TestForge")
-        self.setFixedSize(380, 870)
+        self.setFixedSize(380, 1050)
         self.setWindowIcon(QIcon("assets/testforge_logo.png"))
 
         central_widget = QWidget()
@@ -176,15 +182,43 @@ class MainWindow(QMainWindow):
         self.web_scenario_input.setFixedHeight(70)
         layout.addWidget(self.web_scenario_input)
 
-        # --- Поле для desktop-тестов ---
+        # --- Поля для desktop-тестов ---
         self.desktop_path_label = QLabel("Путь к .exe (или имя, если в PATH):")
         self.desktop_path_label.setObjectName("fieldLabel")
         layout.addWidget(self.desktop_path_label)
 
         self.desktop_path_input = QLineEdit()
         self.desktop_path_input.setObjectName("urlInput")
-        self.desktop_path_input.setPlaceholderText("notepad.exe")
+        self.desktop_path_input.setPlaceholderText("mspaint.exe")
         layout.addWidget(self.desktop_path_input)
+
+        self.desktop_text_label = QLabel("Ожидаемый текст в окне (необязательно):")
+        self.desktop_text_label.setObjectName("fieldLabel")
+        layout.addWidget(self.desktop_text_label)
+
+        self.desktop_text_input = QLineEdit()
+        self.desktop_text_input.setObjectName("urlInput")
+        self.desktop_text_input.setPlaceholderText("например, Безымянный")
+        layout.addWidget(self.desktop_text_input)
+
+        self.desktop_element_label = QLabel("Название элемента (необязательно):")
+        self.desktop_element_label.setObjectName("fieldLabel")
+        layout.addWidget(self.desktop_element_label)
+
+        self.desktop_element_input = QLineEdit()
+        self.desktop_element_input.setObjectName("urlInput")
+        self.desktop_element_input.setPlaceholderText("например, OK")
+        layout.addWidget(self.desktop_element_input)
+
+        self.desktop_scenario_label = QLabel("Сценарий действий (необязательно):")
+        self.desktop_scenario_label.setObjectName("fieldLabel")
+        layout.addWidget(self.desktop_scenario_label)
+
+        self.desktop_scenario_input = QTextEdit()
+        self.desktop_scenario_input.setObjectName("bodyInput")
+        self.desktop_scenario_input.setPlaceholderText('click: Файл\ntype: Имя файла | test.txt')
+        self.desktop_scenario_input.setFixedHeight(70)
+        layout.addWidget(self.desktop_scenario_input)
 
         # --- Поля для API-тестов ---
         self.headers_label = QLabel("Заголовки (JSON, необязательно):")
@@ -262,6 +296,12 @@ class MainWindow(QMainWindow):
         self.target_input.setVisible(not is_desktop)
         self.desktop_path_label.setVisible(is_desktop)
         self.desktop_path_input.setVisible(is_desktop)
+        self.desktop_text_label.setVisible(is_desktop)
+        self.desktop_text_input.setVisible(is_desktop)
+        self.desktop_element_label.setVisible(is_desktop)
+        self.desktop_element_input.setVisible(is_desktop)
+        self.desktop_scenario_label.setVisible(is_desktop)
+        self.desktop_scenario_input.setVisible(is_desktop)
 
         if is_web:
             self.target_input.setPlaceholderText("https://example.com")
@@ -379,9 +419,16 @@ class MainWindow(QMainWindow):
             if not app_path:
                 QMessageBox.warning(self, "Не заполнено поле", "Укажите путь к приложению.")
                 return
+            desktop_text = self.desktop_text_input.text().strip()
+            desktop_element = self.desktop_element_input.text().strip()
+            desktop_scenario = self.desktop_scenario_input.toPlainText().strip()
             self.status_label.setText(f"Проверяем {app_path}...")
             logging.info(f"Запуск desktop-теста для {app_path}")
-            self.thread = TestRunnerThread(target="desktop", app_path=app_path)
+            self.thread = TestRunnerThread(
+                target="desktop", app_path=app_path,
+                desktop_text=desktop_text, desktop_element=desktop_element,
+                desktop_scenario=desktop_scenario
+            )
             self.thread.finished_signal.connect(self.on_tests_finished)
             self.thread.start()
             return
